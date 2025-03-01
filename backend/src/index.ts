@@ -24,7 +24,7 @@ wss.on("connection",(ws)=>{
                     console.log(`Target not found with id: ${targetId}`);
                     return;
                 }
-                target.send(JSON.stringify({type,sdp, candidate}));
+                target.send(JSON.stringify({ type, sdp, candidate, senderId: id }));
             }    
         } catch (error) {
             console.log(error);

@@ -1,0 +1,88 @@
+import { useEffect, useRef,useState } from "react"
+
+export default function Video() {
+    const localRef = useRef<HTMLVideoElement>(null);
+    const remoteRef = useRef<HTMLVideoElement>(null);
+    const socket = useRef<WebSocket | null>(null);
+    const peerConnection = useRef<RTCPeerConnection | null>(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const [targetId, setTargetId] = useState<string>("");
+    const [clientId, setClientId] = useState<string>("");
+
+
+    
+
+    useEffect(()=>{
+        socket.current = new WebSocket("ws://localhost:8080");
+        socket.current.onopen = ()=>{
+            console.log("Connected to server");
+            const id = Math.random().toString(36).substring(2, 9);
+            setClientId(id);
+            socket.current?.send(JSON.stringify({type:"register", id}));
+        }
+        
+        socket.current.onmessage = async (message)=>{
+            const data = JSON.parse(message.data);
+
+            if(data.type === "createOffer"){
+                peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                    const answer =  await peerConnection.current?.createAnswer()
+                    peerConnection.current?.setLocalDescription(answer);
+                    socket.current?.send(JSON.stringify({type:"createAnswer", sdp:answer, targetId}));
+            }
+            if(data.type === "createAnswer"){
+                await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            }
+            if(data.type === "iceCandidate"){
+                await peerConnection.current?.addIceCandidate(new RTCIceCandidate(data.candidate))
+            }
+    }
+    return ()=>socket.current?.close();
+    },[])
+    useEffect(() => {
+        async function StartPeerConnection() {
+            peerConnection.current = new RTCPeerConnection({ "iceServers": [{ urls: "stun:stun.l.google.com:19302" }] });
+            peerConnection.current.onicecandidate = (event)=>{
+                if(event.candidate){
+                    socket.current?.send(JSON.stringify({type:"iceCandidate", candidate: event.candidate, targetId}));
+                }
+            }
+            peerConnection.current.ontrack = (event)=>{
+                if(remoteRef.current){
+                    remoteRef.current.srcObject = event.streams[0];
+                }
+            }
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            if(localRef.current){
+                localRef.current.srcObject = stream;
+            }
+            stream.getTracks().forEach(track => peerConnection.current?.addTrack(track, stream));
+        }
+        StartPeerConnection();
+    }, [])
+
+    async function startCall() {
+        if(!targetId || !socket.current || !peerConnection.current){
+            alert("Enter targetId to call");
+            return;
+        }
+        const offer = await peerConnection.current.createOffer();
+        await peerConnection.current.setLocalDescription(offer);
+        socket.current?.send(JSON.stringify({type:"createOffer",sdp:offer,targetId}))
+        setIsConnected(true);
+    }
+    return (
+        <div className="flex flex-col items-center gap-4 p-4">
+            <h1 className="text-2xl font-bold">WebRTC video Chat</h1>
+            <div className="flex flex-col gap-4">
+                <p className="text-xl">Your ID : <span className="font-bold text-2xl">{clientId}</span></p>
+                <input type="text" placeholder="Enter TargetId to call" onChange={(e)=>setTargetId(e.target.value)} className="border-2 border-gray-800 p-2"/>
+            </div>
+            <div className="flex gap-4">
+                <video ref={localRef} autoPlay playsInline className="w-1/2 h-1/2 border-2 border-gray-800"></video>
+                <video ref={remoteRef} autoPlay playsInline className="w-1/2 h-1/2 border-2 border-gray-800"></video>
+            </div>
+            <button className="bg-blue-500 text-white px-4 py-2 rounded mt-4" onClick={startCall} disabled={isConnected}>{isConnected ? "Connected" : "Start Call"}</button>
+        </div>
+    )
+}
