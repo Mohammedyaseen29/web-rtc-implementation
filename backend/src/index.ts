@@ -13,12 +13,15 @@ wss.on("connection",(ws)=>{
     ws.on("message", (data:any)=>{
         try {
             const message = JSON.parse(data);
+            console.log("Received message:", message);
             const { type, id, sdp, targetId, candidate } = message;
+            console.log("Extracted targetId:", targetId);
             if(type === "register"){
                 client.set(id,ws);
                 console.log("Client registered with id: ", id);
             }
             else if( type === "createOffer" || type === "createAnswer" || type === "iceCandidate"){
+                console.log("Sending message to targetId:", targetId);
                 const target = client.get(targetId);
                 if(!target){
                     console.log(`Target not found with id: ${targetId}`);
@@ -40,6 +43,4 @@ wss.on("connection",(ws)=>{
             }   
         }
     })
-
-    ws.send("Hello from server");
 })
